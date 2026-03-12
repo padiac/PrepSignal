@@ -19,6 +19,7 @@ app.add_middleware(
 class PostSchema(BaseModel):
     source_site: str
     source_post_id: str
+    source_thread_id: Optional[str] = None
     source_url: str
     content: str
     created_at: Optional[str] = None
@@ -28,11 +29,18 @@ DB_PATH = "raw_posts.db"
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
+    # Add column if not exists (for backward compatibility if run_backend restarts)
+    try:
+        c.execute('ALTER TABLE raw_posts ADD COLUMN source_thread_id TEXT')
+    except:
+        pass
+
     c.execute('''
         CREATE TABLE IF NOT EXISTS raw_posts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             source_site TEXT,
             source_post_id TEXT,
+            source_thread_id TEXT,
             source_url TEXT,
             content TEXT,
             created_at TEXT,
@@ -52,12 +60,16 @@ def ingest_post(post: PostSchema):
     try:
         c.execute('''
             INSERT INTO raw_posts 
-            (source_site, source_post_id, source_url, content, created_at)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (post.source_site, post.source_post_id, post.source_url, post.content, post.created_at))
+            (source_site, source_post_id, source_thread_id, source_url, content, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(source_site, source_post_id) DO UPDATE SET
+                content = excluded.content,
+                ingested_at = CURRENT_TIMESTAMP
+        ''', (post.source_site, post.source_post_id, post.source_thread_id, post.source_url, post.content, post.created_at))
         conn.commit()
         inserted = True
-    except sqlite3.IntegrityError:
+    except Exception as e:
+        print(f"DB Error: {e}")
         inserted = False
     finally:
         conn.close()

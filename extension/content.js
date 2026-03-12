@@ -6,7 +6,7 @@ function extractPosts() {
     const threads = document.querySelectorAll('tbody[id^="normalthread_"]');
     const threadUrls = [];
     for (const row of threads) {
-      if (threadUrls.length >= 5) break; // Limit auto-opening to 5 threads
+      // We no longer limit to 5! We collect all unvisited threads on this page to build out our backlog queue.
       const link = row.querySelector('a.s.xst');
       if (link && link.href) {
         threadUrls.push(link.href);
@@ -15,17 +15,21 @@ function extractPosts() {
     
     if (threadUrls.length > 0) {
       chrome.runtime.sendMessage({
-        type: "OPEN_THREADS",
+        type: "QUEUE_THREADS",
         payload: threadUrls
       });
-      console.log("Sent OPEN_THREADS message to background for urls:", threadUrls);
+      console.log("Sent QUEUE_THREADS message to background for urls:", threadUrls);
     }
     return []; // We handle extraction inside the thread page now, no need to ingest list items
   } 
   else if (url.includes('thread-')) {
+    // Extract the main thread ID from the URL, e.g. thread-1168182-1-1.html -> 1168182
+    const threadIdMatch = url.match(/thread-(\d+)/);
+    const threadId = threadIdMatch ? threadIdMatch[1] : null;
+
     const postNodes = document.querySelectorAll('div[id^="post_"]');
     for (const post of postNodes) {
-      if (posts.length >= 5) break; 
+      // Removed the 5 post limit here so we grab all replies on the current page
       
       const contentNode = post.querySelector('td.t_f');
       const dateNode = post.querySelector('em[id^="authorposton"]');
@@ -39,6 +43,7 @@ function extractPosts() {
       posts.push({
         source_site: "1point3acres",
         source_post_id: id,
+        source_thread_id: threadId,
         source_url: url.split('?')[0].split('&')[0], // clean tracking params
         content: content,
         created_at: date
@@ -59,9 +64,28 @@ async function sendPostsToBackground() {
     console.log("collector result:", response);
   }
 
-  // If this was an automated tab opened by our extension, immediately close it
+  // If this was an automated tab opened by our extension, handle closing or pagination
   if (location.href.includes('auto_scrape=1')) {
-    chrome.runtime.sendMessage({ type: "CLOSE_TABS" });
+    // Look for the "Next Page" button inside the thread
+    const nextBtn = document.querySelector('a.nxt');
+    
+    if (nextBtn && nextBtn.href) {
+      console.log("Found next page, navigating to:", nextBtn.href);
+      // Append our tracking parameter so the next page also triggers the auto scrape delay
+      const nextUrl = new URL(nextBtn.href);
+      nextUrl.searchParams.set("auto_scrape", "1");
+      
+      // Simulate human reading time (5 to 12 seconds) before clicking next page
+      const paginationDelay = Math.floor(Math.random() * 7000) + 5000;
+      console.log(`Waiting ${paginationDelay}ms before going to next page...`);
+      setTimeout(() => {
+        window.location.href = nextUrl.toString();
+      }, paginationDelay);
+    } else {
+      console.log("No next page found or reached the end. Closing tab.");
+      // We reached the last page of the thread, so we close it
+      chrome.runtime.sendMessage({ type: "CLOSE_TABS" });
+    }
   }
 }
 

@@ -18,6 +18,61 @@ async function saveSentIds(setObj) {
   });
 }
 
+async function getQueue() {
+  const result = await chrome.storage.local.get(["scrapeQueue"]);
+  return result.scrapeQueue || [];
+}
+
+async function saveQueue(queueArray) {
+  await chrome.storage.local.set({ scrapeQueue: queueArray });
+}
+
+function scheduleNextScrape(delayInMinutes) {
+  let delay = delayInMinutes;
+
+  if (typeof delay === "undefined") {
+    // 💡 Human behavior simulation algorithm 💡
+    const rand = Math.random();
+
+    if (rand < 0.6) {
+      // 60% chance: "Bursty reading session".
+      // Just like a human opening a few tabs in a row and reading them.
+      // Wait between 1 minute to 4 minutes.
+      delay = Math.random() * 3 + 1;
+    } else if (rand < 0.9) {
+      // 30% chance: "Took a short break".
+      // Wait between 15 minutes to 45 minutes.
+      delay = Math.random() * 30 + 15;
+    } else {
+      // 10% chance: "Long break / Working session / Sleeping".
+      // Wait between 60 minutes to 180 minutes (1 to 3 hours).
+      delay = Math.random() * 120 + 60;
+    }
+  }
+
+  chrome.alarms.create("scrapeTick", { delayInMinutes: delay });
+  console.log(`Scheduled next scrape in ${delay.toFixed(2)} minutes.`);
+}
+
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+  if (alarm.name === "scrapeTick") {
+    const queue = await getQueue();
+    if (queue.length > 0) {
+      const url = queue.shift();
+      await saveQueue(queue);
+      
+      const targetUrl = new URL(url);
+      targetUrl.searchParams.set("auto_scrape", "1");
+      chrome.tabs.create({ url: targetUrl.toString(), active: false });
+
+      if (queue.length > 0) {
+        scheduleNextScrape();
+      }
+    }
+  }
+});
+
+
 async function postToApi(post, apiBase) {
   const resp = await fetch(`${apiBase}/posts`, {
     method: "POST",
@@ -36,16 +91,31 @@ async function postToApi(post, apiBase) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === "OPEN_THREADS") {
+  if (message.type === "QUEUE_THREADS") {
     (async () => {
-      for (let i = 0; i < message.payload.length; i++) {
-        const url = message.payload[i];
-        const targetUrl = new URL(url);
-        targetUrl.searchParams.set("auto_scrape", "1");
-        chrome.tabs.create({ url: targetUrl.toString(), active: false });
-        // wait a random amount of time (3 to 7 seconds) before opening the next tab
-        const randomDelay = Math.floor(Math.random() * 4000) + 3000;
-        await new Promise(r => setTimeout(r, randomDelay));
+      const queue = await getQueue();
+      const sentIds = await getSentIds();
+      let added = 0;
+
+      for (const url of message.payload) {
+        // extract ID to check if sent
+        const match = url.match(/thread-(\d+)/);
+        if (match) {
+          const dedupeKey = `1point3acres:${match[1]}`;
+          if (!sentIds.has(dedupeKey) && !queue.includes(url)) {
+            queue.push(url);
+            added += 1;
+          }
+        }
+      }
+
+      if (added > 0) {
+        await saveQueue(queue);
+        // Start processing if not already scheduled
+        const alarm = await chrome.alarms.get("scrapeTick");
+        if (!alarm) {
+          scheduleNextScrape(0.1); // Start the first one in 6 seconds
+        }
       }
     })();
     sendResponse({ ok: true });
