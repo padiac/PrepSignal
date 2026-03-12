@@ -13,7 +13,6 @@ function extractPosts() {
       const threadId = threadIdMatch ? threadIdMatch[1] : null;
       if (!threadId) continue;
 
-      // Reply count: 1point3acres uses <td class="num"><a class="xi2">2</a></td>
       let listReplyCount = null;
       const numCell = row.querySelector('td.num');
       if (numCell) {
@@ -25,11 +24,11 @@ function extractPosts() {
     }
 
     if (threadInfos.length > 0) {
-      chrome.runtime.sendMessage({
-        type: "QUEUE_THREADS",
-        payload: threadInfos
-      });
+      chrome.runtime.sendMessage({ type: "QUEUE_THREADS", payload: threadInfos });
       console.log("Sent QUEUE_THREADS:", threadInfos.length, "threads");
+    } else if (!window.__forumRetried) {
+      window.__forumRetried = true;
+      setTimeout(() => sendPostsToBackground(), 3000);
     }
     return []; // We handle extraction inside the thread page now, no need to ingest list items
   } 
@@ -128,13 +127,15 @@ async function sendPostsToBackground() {
   }
 }
 
-// Random delay before collecting: simulates reading the thread before extracting
-if (location.href.includes('thread-') && location.href.includes('auto_scrape=1')) {
-  const readDelay = Math.floor(Math.random() * 7000) + 8000;  // 8–15 s
-  setTimeout(sendPostsToBackground, readDelay);
-} else {
-  sendPostsToBackground();
-}
+(async () => {
+  if (location.href.includes('thread-') && location.href.includes('auto_scrape=1')) {
+    const { fastMode } = await chrome.storage.local.get(["fastMode"]);
+    const readDelay = fastMode ? 2000 : Math.floor(Math.random() * 7000) + 8000;
+    setTimeout(sendPostsToBackground, readDelay);
+  } else {
+    sendPostsToBackground();
+  }
+})();
 
 chrome.runtime.onMessage.addListener((message) => {
   if (message.type === "MANUAL_COLLECT") {

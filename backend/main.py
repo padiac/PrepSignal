@@ -56,6 +56,23 @@ def init_db():
             UNIQUE(source_site, source_post_id)
         )
     ''')
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS interpreted_posts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            raw_post_id INTEGER NOT NULL UNIQUE,
+            company TEXT,
+            interview_stage TEXT,
+            topic TEXT,
+            interpreted_question TEXT,
+            question_family TEXT,
+            summary TEXT,
+            confidence REAL,
+            parsed_json TEXT,
+            model_name TEXT,
+            parsed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (raw_post_id) REFERENCES raw_posts(id)
+        )
+    ''')
     conn.commit()
     conn.close()
 
@@ -63,7 +80,7 @@ init_db()
 
 @app.get("/")
 def root():
-    return {"message": "PrepSignal API", "endpoints": {"posts": "/posts", "thread_post_counts": "POST /threads/post_counts", "docs": "/docs"}}
+    return {"message": "PrepSignal API", "endpoints": {"posts": "/posts", "interpreted": "/interpreted", "thread_post_counts": "POST /threads/post_counts", "docs": "/docs"}}
 
 @app.post("/posts")
 def ingest_post(post: PostSchema):
@@ -117,5 +134,24 @@ def get_posts(limit: int = 50, offset: int = 0):
     c = conn.cursor()
     c.execute('SELECT * FROM raw_posts ORDER BY id DESC LIMIT ? OFFSET ?', (limit, offset))
     rows = [dict(row) for row in c.fetchall()]
+    conn.close()
+    return rows
+
+@app.get("/interpreted")
+def get_interpreted(limit: int = 50, offset: int = 0):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    try:
+        c.execute(
+            '''SELECT i.*, r.content as raw_content, r.company as raw_company, r.source_url
+               FROM interpreted_posts i
+               JOIN raw_posts r ON i.raw_post_id = r.id
+               ORDER BY i.parsed_at DESC LIMIT ? OFFSET ?''',
+            (limit, offset),
+        )
+        rows = [dict(row) for row in c.fetchall()]
+    except sqlite3.OperationalError:
+        rows = []
     conn.close()
     return rows

@@ -28,10 +28,13 @@ async function saveQueue(queueArray) {
   await chrome.storage.local.set({ scrapeQueue: queueArray });
 }
 
-function scheduleNextScrape(delayInMinutes) {
+async function scheduleNextScrape(delayInMinutes) {
   let delay = delayInMinutes;
+  const { fastMode } = await chrome.storage.local.get(["fastMode"]);
 
-  if (typeof delay === "undefined") {
+  if (fastMode) {
+    delay = 0.05;
+  } else if (typeof delay === "undefined") {
     const rand = Math.random();
     if (rand < 0.50) {
       delay = Math.random() * 2 + 1;        // 50% peak: 1–3 min
@@ -50,24 +53,14 @@ function scheduleNextScrape(delayInMinutes) {
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === "scrapeTick") {
-    const queue = await getQueue();
-    if (queue.length > 0) {
-      const url = queue.shift();
-      await saveQueue(queue);
-      
-      const targetUrl = new URL(url);
-      targetUrl.searchParams.set("auto_scrape", "1");
-      chrome.tabs.create({ url: targetUrl.toString(), active: false });
-
-      if (queue.length > 0) {
-        scheduleNextScrape();
-      }
-    }
+    await processNextInQueue();
   } else if (alarm.name === "forumRefresh") {
-    const tab = await chrome.tabs.create({ url: FORUM_145_URL, active: false });
-    setTimeout(() => {
-      if (tab?.id) chrome.tabs.remove(tab.id).catch(() => {});
-    }, 45000);
+    try {
+      const tab = await chrome.tabs.create({ url: FORUM_145_URL, active: false });
+      setTimeout(() => {
+        if (tab?.id) chrome.tabs.remove(tab.id).catch(() => {});
+      }, 45000);
+    } catch (_) {}
     chrome.alarms.create("forumRefresh", { delayInMinutes: Math.random() * 120 + 240 });
   }
 });
@@ -105,7 +98,43 @@ async function fetchThreadPostCounts(threadIds, apiBase) {
   }
 }
 
+async function processNextInQueue() {
+  const queue = await getQueue();
+  if (queue.length === 0) return false;
+  const url = queue.shift();
+  await saveQueue(queue);
+  const targetUrl = new URL(url);
+  targetUrl.searchParams.set("auto_scrape", "1");
+  try {
+    await chrome.tabs.create({ url: targetUrl.toString(), active: false });
+  } catch (e) {
+    queue.unshift(url);
+    await saveQueue(queue);
+    if (queue.length > 0) await scheduleNextScrape();
+    return false;
+  }
+  if (queue.length > 0) {
+    await scheduleNextScrape();
+  }
+  return true;
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === "ENSURE_RESUME") {
+    maybeResumeQueue().then(() => sendResponse({ ok: true }));
+    return true;
+  }
+
+  if (message.type === "TRIGGER_NEXT_SCRAPE") {
+    (async () => {
+      const queueBefore = await getQueue();
+      const done = await processNextInQueue();
+      const queueAfter = await getQueue();
+      sendResponse({ ok: true, triggered: done, queueBefore: queueBefore.length, queueAfter: queueAfter.length });
+    })();
+    return true;
+  }
+
   if (message.type === "QUEUE_THREADS") {
     (async () => {
       const queue = await getQueue();
@@ -149,7 +178,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         await saveQueue(queue);
         const alarm = await chrome.alarms.get("scrapeTick");
         if (!alarm) {
-          scheduleNextScrape(0.1);
+          const { fastMode } = await chrome.storage.local.get(["fastMode"]);
+          scheduleNextScrape(fastMode ? 0.05 : 5 + Math.random() * 10);
         }
       }
       sendResponse({ ok: true, added });
@@ -159,9 +189,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === "CLOSE_TABS") {
     if (sender.tab && sender.tab.id) {
-      // Small delay to ensure the background script finishes ingesting
+      const tabId = sender.tab.id;
       setTimeout(() => {
-        chrome.tabs.remove(sender.tab.id);
+        chrome.tabs.remove(tabId).catch(() => {});
       }, 1000);
     }
     sendResponse({ ok: true });
@@ -202,16 +232,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 async function ensureForumRefreshAlarm() {
   const alarm = await chrome.alarms.get("forumRefresh");
   if (!alarm) {
-    chrome.alarms.create("forumRefresh", { delayInMinutes: Math.random() * 60 + 60 });
+    const { fastMode } = await chrome.storage.local.get(["fastMode"]);
+    const delay = fastMode ? 0.5 + Math.random() : Math.random() * 60 + 60;
+    chrome.alarms.create("forumRefresh", { delayInMinutes: delay });
   }
 }
 
 async function maybeResumeQueue() {
   const queue = await getQueue();
+  if (queue.length === 0) return;
   const alarm = await chrome.alarms.get("scrapeTick");
-  if (queue.length > 0 && !alarm) {
-    scheduleNextScrape(0.1);
-  }
+  if (alarm) return;
+  await processNextInQueue();
 }
 
 chrome.runtime.onStartup.addListener(() => {
