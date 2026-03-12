@@ -24,6 +24,9 @@ class PostSchema(BaseModel):
     content: str
     created_at: Optional[str] = None
 
+class ThreadIdsSchema(BaseModel):
+    thread_ids: list[str]
+
 DB_PATH = "raw_posts.db"
 
 def init_db():
@@ -53,6 +56,10 @@ def init_db():
 
 init_db()
 
+@app.get("/")
+def root():
+    return {"message": "PrepSignal API", "endpoints": {"posts": "/posts", "thread_post_counts": "POST /threads/post_counts", "docs": "/docs"}}
+
 @app.post("/posts")
 def ingest_post(post: PostSchema):
     conn = sqlite3.connect(DB_PATH)
@@ -75,6 +82,24 @@ def ingest_post(post: PostSchema):
         conn.close()
         
     return {"status": "ok", "inserted": inserted}
+
+@app.post("/threads/post_counts")
+def get_thread_post_counts(body: ThreadIdsSchema):
+    """Return post count per thread_id from DB. Used by extension to skip re-queueing threads with no new replies."""
+    thread_ids = body.thread_ids
+    if not thread_ids:
+        return {}
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    placeholders = ",".join("?" * len(thread_ids))
+    c.execute(
+        f"SELECT source_thread_id, COUNT(*) FROM raw_posts WHERE source_site='1point3acres' AND source_thread_id IN ({placeholders}) GROUP BY source_thread_id",
+        thread_ids,
+    )
+    result = {row[0]: row[1] for row in c.fetchall()}
+    conn.close()
+    # Include threads we have no record of as 0
+    return {tid: result.get(tid, 0) for tid in thread_ids}
 
 @app.get("/posts")
 def get_posts(limit: int = 50, offset: int = 0):

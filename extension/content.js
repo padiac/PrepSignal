@@ -4,21 +4,32 @@ function extractPosts() {
 
   if (url.includes('forum-145')) {
     const threads = document.querySelectorAll('tbody[id^="normalthread_"]');
-    const threadUrls = [];
+    const threadInfos = [];
     for (const row of threads) {
-      // We no longer limit to 5! We collect all unvisited threads on this page to build out our backlog queue.
       const link = row.querySelector('a.s.xst');
-      if (link && link.href) {
-        threadUrls.push(link.href);
+      if (!link?.href) continue;
+
+      const threadIdMatch = link.href.match(/thread-(\d+)/);
+      const threadId = threadIdMatch ? threadIdMatch[1] : null;
+      if (!threadId) continue;
+
+      // Reply count: 1point3acres uses <td class="num"><a class="xi2">2</a></td>
+      let listReplyCount = null;
+      const numCell = row.querySelector('td.num');
+      if (numCell) {
+        const n = parseInt(numCell.textContent.trim(), 10);
+        if (!isNaN(n) && n >= 0) listReplyCount = n;
       }
+
+      threadInfos.push({ url: link.href, threadId, listReplyCount });
     }
-    
-    if (threadUrls.length > 0) {
+
+    if (threadInfos.length > 0) {
       chrome.runtime.sendMessage({
         type: "QUEUE_THREADS",
-        payload: threadUrls
+        payload: threadInfos
       });
-      console.log("Sent QUEUE_THREADS message to background for urls:", threadUrls);
+      console.log("Sent QUEUE_THREADS:", threadInfos.length, "threads");
     }
     return []; // We handle extraction inside the thread page now, no need to ingest list items
   } 

@@ -90,35 +90,67 @@ async function postToApi(post, apiBase) {
   return resp.json();
 }
 
+async function fetchThreadPostCounts(threadIds, apiBase) {
+  if (threadIds.length === 0) return {};
+  try {
+    const resp = await fetch(`${apiBase}/threads/post_counts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ thread_ids: threadIds })
+    });
+    if (!resp.ok) return {};
+    return await resp.json();
+  } catch {
+    return {};
+  }
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "QUEUE_THREADS") {
     (async () => {
       const queue = await getQueue();
-      const sentIds = await getSentIds();
-      let added = 0;
+      const { apiBase } = await getConfig();
+      const threadInfos = message.payload;
+      if (!Array.isArray(threadInfos) || threadInfos.length === 0) {
+        sendResponse({ ok: true });
+        return;
+      }
 
-      for (const url of message.payload) {
-        // extract ID to check if sent
-        const match = url.match(/thread-(\d+)/);
-        if (match) {
-          const dedupeKey = `1point3acres:${match[1]}`;
-          if (!sentIds.has(dedupeKey) && !queue.includes(url)) {
-            queue.push(url);
-            added += 1;
-          }
+      const threadIds = threadInfos.map((t) => t?.threadId).filter(Boolean);
+      const dbCounts = await fetchThreadPostCounts(threadIds, apiBase);
+
+      let added = 0;
+      const queueUrls = new Set(queue);
+
+      for (const info of threadInfos) {
+        const url = info?.url;
+        const threadId = info?.threadId;
+        const listReplyCount = info?.listReplyCount;
+        if (!url || !threadId || queueUrls.has(url)) continue;
+
+        const dbCount = dbCounts[threadId] ?? 0;
+        // listReplyCount = replies excluding OP; total posts = listReplyCount + 1
+        const hasNewContent =
+          listReplyCount == null ||
+          dbCount === 0 ||
+          listReplyCount + 1 > dbCount;
+
+        if (hasNewContent) {
+          queue.push(url);
+          queueUrls.add(url);
+          added += 1;
         }
       }
 
       if (added > 0) {
         await saveQueue(queue);
-        // Start processing if not already scheduled
         const alarm = await chrome.alarms.get("scrapeTick");
         if (!alarm) {
-          scheduleNextScrape(0.1); // Start the first one in 6 seconds
+          scheduleNextScrape(0.1);
         }
       }
+      sendResponse({ ok: true, added });
     })();
-    sendResponse({ ok: true });
     return true;
   }
 
