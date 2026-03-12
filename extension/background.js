@@ -1,4 +1,5 @@
 const DEFAULT_API_BASE = "http://localhost:8000";
+const FORUM_145_URL = "https://www.1point3acres.com/bbs/forum-145-1.html";
 
 async function getConfig() {
   const result = await chrome.storage.sync.get(["apiBase"]);
@@ -31,22 +32,15 @@ function scheduleNextScrape(delayInMinutes) {
   let delay = delayInMinutes;
 
   if (typeof delay === "undefined") {
-    // 💡 Human behavior simulation algorithm 💡
     const rand = Math.random();
-
-    if (rand < 0.6) {
-      // 60% chance: "Bursty reading session".
-      // Just like a human opening a few tabs in a row and reading them.
-      // Wait between 1 minute to 4 minutes.
-      delay = Math.random() * 3 + 1;
-    } else if (rand < 0.9) {
-      // 30% chance: "Took a short break".
-      // Wait between 15 minutes to 45 minutes.
-      delay = Math.random() * 30 + 15;
+    if (rand < 0.50) {
+      delay = Math.random() * 2 + 1;        // 50% peak: 1–3 min
+    } else if (rand < 0.80) {
+      delay = Math.random() * 30 + 20;     // 30% mid: 20–50 min
+    } else if (rand < 0.95) {
+      delay = Math.random() * 180 + 120;   // 15% long: 2–5 h
     } else {
-      // 10% chance: "Long break / Working session / Sleeping".
-      // Wait between 60 minutes to 180 minutes (1 to 3 hours).
-      delay = Math.random() * 120 + 60;
+      delay = Math.random() * 360 + 360;    // 5% very long: 6–12 h
     }
   }
 
@@ -69,6 +63,12 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
         scheduleNextScrape();
       }
     }
+  } else if (alarm.name === "forumRefresh") {
+    const tab = await chrome.tabs.create({ url: FORUM_145_URL, active: false });
+    setTimeout(() => {
+      if (tab?.id) chrome.tabs.remove(tab.id).catch(() => {});
+    }, 45000);
+    chrome.alarms.create("forumRefresh", { delayInMinutes: Math.random() * 120 + 240 });
   }
 });
 
@@ -111,13 +111,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const queue = await getQueue();
       const { apiBase } = await getConfig();
       const threadInfos = message.payload;
+      const { backfillMode: bf } = await chrome.storage.local.get(["backfillMode"]);
+      const backfillMode = bf === true;
+      if (backfillMode) await chrome.storage.local.set({ backfillMode: false });
       if (!Array.isArray(threadInfos) || threadInfos.length === 0) {
         sendResponse({ ok: true });
         return;
       }
 
       const threadIds = threadInfos.map((t) => t?.threadId).filter(Boolean);
-      const dbCounts = await fetchThreadPostCounts(threadIds, apiBase);
+      const dbCounts = backfillMode ? {} : await fetchThreadPostCounts(threadIds, apiBase);
 
       let added = 0;
       const queueUrls = new Set(queue);
@@ -129,8 +132,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (!url || !threadId || queueUrls.has(url)) continue;
 
         const dbCount = dbCounts[threadId] ?? 0;
-        // listReplyCount = replies excluding OP; total posts = listReplyCount + 1
         const hasNewContent =
+          backfillMode ||
           listReplyCount == null ||
           dbCount === 0 ||
           listReplyCount + 1 > dbCount;
@@ -177,15 +180,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     for (const post of message.payload) {
       const dedupeKey = `${post.source_site}:${post.source_post_id}`;
-      if (sentIds.has(dedupeKey)) {
-        skipped += 1;
-        continue;
-      }
-
+      const alreadySent = sentIds.has(dedupeKey);
       try {
         await postToApi(post, apiBase);
         sentIds.add(dedupeKey);
-        inserted += 1;
+        if (alreadySent) skipped += 1; else inserted += 1;
       } catch (err) {
         console.error("Failed to send post:", err);
         failed += 1;
@@ -199,3 +198,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   return true;
 });
+
+async function ensureForumRefreshAlarm() {
+  const alarm = await chrome.alarms.get("forumRefresh");
+  if (!alarm) {
+    chrome.alarms.create("forumRefresh", { delayInMinutes: Math.random() * 60 + 60 });
+  }
+}
+
+async function maybeResumeQueue() {
+  const queue = await getQueue();
+  const alarm = await chrome.alarms.get("scrapeTick");
+  if (queue.length > 0 && !alarm) {
+    scheduleNextScrape(0.1);
+  }
+}
+
+chrome.runtime.onStartup.addListener(() => {
+  maybeResumeQueue();
+  ensureForumRefreshAlarm();
+});
+
+maybeResumeQueue();
+ensureForumRefreshAlarm();

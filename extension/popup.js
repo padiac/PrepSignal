@@ -11,8 +11,14 @@ async function saveConfig() {
 }
 
 async function clearCache() {
-  await chrome.storage.local.remove(["sentPostIds"]);
-  document.getElementById("status").textContent = "Cache cleared successfully.";
+  await chrome.storage.local.remove(["sentPostIds", "scrapeQueue"]);
+  document.getElementById("status").textContent = "Cache cleared (sentPostIds + scrapeQueue).";
+}
+
+async function enableBackfill() {
+  await chrome.storage.local.set({ backfillMode: true });
+  document.getElementById("status").textContent =
+    "Backfill enabled. Open forum-145 (海外面经) now; all threads on the page will be re-queued to update metadata.";
 }
 
 async function collectCurrentTab() {
@@ -32,6 +38,7 @@ async function collectCurrentTab() {
 document.addEventListener('DOMContentLoaded', () => {
     document.getElementById("save").addEventListener("click", saveConfig);
     document.getElementById("collect").addEventListener("click", collectCurrentTab);
+    document.getElementById("backfill").addEventListener("click", enableBackfill);
     document.getElementById("clearCache").addEventListener("click", clearCache);
     loadConfig();
 });

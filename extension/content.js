@@ -34,9 +34,33 @@ function extractPosts() {
     return []; // We handle extraction inside the thread page now, no need to ingest list items
   } 
   else if (url.includes('thread-')) {
-    // Extract the main thread ID from the URL, e.g. thread-1168182-1-1.html -> 1168182
     const threadIdMatch = url.match(/thread-(\d+)/);
     const threadId = threadIdMatch ? threadIdMatch[1] : null;
+
+    // Thread title, company, job, metadata: from DOM first, fallback to page <title>/<meta>
+    // title format: "SIG Phone + Onsite|sig面经|一亩三分地海外面经版"; meta keywords: "海外面经,sig"
+    let threadTitle = null;
+    let company = null;
+    let jobTitle = null;
+    let threadMetadata = null;
+    const titleEl = document.getElementById('thread_subject');
+    if (titleEl) threadTitle = titleEl.textContent.trim();
+    const companyEl = document.querySelector('table.plhin font[color="#FF6600"], table.plhin font[color="#ff6600"]');
+    const jobEl = document.querySelector('table.plhin font[color="green"]');
+    if (companyEl) company = companyEl.textContent.trim();
+    if (jobEl) jobTitle = jobEl.textContent.trim();
+    const uTag = companyEl?.closest('u');
+    if (uTag) threadMetadata = uTag.innerText.trim();
+    // Fallback: parse from <title> "ThreadTitle|company面经|..." and meta keywords
+    if (!threadTitle || !company) {
+      const parts = document.title.split('|');
+      if (parts.length >= 1 && !threadTitle) threadTitle = parts[0].trim();
+      if (parts.length >= 2 && !company) company = parts[1].replace(/面经$/, '').trim();
+      if (!company) {
+        const kw = document.querySelector('meta[name="keywords"]')?.getAttribute('content');
+        if (kw) company = kw.split(',')[1]?.trim() || null;
+      }
+    }
 
     const postNodes = document.querySelectorAll('div[id^="post_"]');
     for (const post of postNodes) {
@@ -55,9 +79,13 @@ function extractPosts() {
         source_site: "1point3acres",
         source_post_id: id,
         source_thread_id: threadId,
-        source_url: url.split('?')[0].split('&')[0], // clean tracking params
+        source_url: url.split('?')[0].split('&')[0],
         content: content,
-        created_at: date
+        created_at: date,
+        company: company,
+        job_title: jobTitle,
+        thread_title: threadTitle,
+        thread_metadata: threadMetadata
       });
     }
   }
@@ -100,9 +128,9 @@ async function sendPostsToBackground() {
   }
 }
 
-// Add a slight random delay (3 to 6 seconds) for thread pages to ensure the content fully loads and simulates human reading
+// Random delay before collecting: simulates reading the thread before extracting
 if (location.href.includes('thread-') && location.href.includes('auto_scrape=1')) {
-  const readDelay = Math.floor(Math.random() * 3000) + 3000;
+  const readDelay = Math.floor(Math.random() * 7000) + 8000;  // 8–15 s
   setTimeout(sendPostsToBackground, readDelay);
 } else {
   sendPostsToBackground();

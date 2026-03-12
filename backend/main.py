@@ -23,6 +23,10 @@ class PostSchema(BaseModel):
     source_url: str
     content: str
     created_at: Optional[str] = None
+    company: Optional[str] = None
+    job_title: Optional[str] = None
+    thread_title: Optional[str] = None
+    thread_metadata: Optional[str] = None  # Full line: "码农类General 硕士 全职@sig - 内推 - Onsite | ..."
 
 class ThreadIdsSchema(BaseModel):
     thread_ids: list[str]
@@ -33,10 +37,11 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     # Add column if not exists (for backward compatibility if run_backend restarts)
-    try:
-        c.execute('ALTER TABLE raw_posts ADD COLUMN source_thread_id TEXT')
-    except:
-        pass
+    for col in ("source_thread_id", "company", "job_title", "thread_title", "thread_metadata"):
+        try:
+            c.execute(f"ALTER TABLE raw_posts ADD COLUMN {col} TEXT")
+        except Exception:
+            pass
 
     c.execute('''
         CREATE TABLE IF NOT EXISTS raw_posts (
@@ -67,12 +72,16 @@ def ingest_post(post: PostSchema):
     try:
         c.execute('''
             INSERT INTO raw_posts 
-            (source_site, source_post_id, source_thread_id, source_url, content, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            (source_site, source_post_id, source_thread_id, source_url, content, created_at, company, job_title, thread_title, thread_metadata)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(source_site, source_post_id) DO UPDATE SET
                 content = excluded.content,
+                company = excluded.company,
+                job_title = excluded.job_title,
+                thread_title = excluded.thread_title,
+                thread_metadata = excluded.thread_metadata,
                 ingested_at = CURRENT_TIMESTAMP
-        ''', (post.source_site, post.source_post_id, post.source_thread_id, post.source_url, post.content, post.created_at))
+        ''', (post.source_site, post.source_post_id, post.source_thread_id, post.source_url, post.content, post.created_at, post.company, post.job_title, post.thread_title, post.thread_metadata))
         conn.commit()
         inserted = True
     except Exception as e:
