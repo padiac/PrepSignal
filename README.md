@@ -24,7 +24,8 @@ agent login   # 一次性登录
 ```
 
 - `agent` 不在 PATH 时：设置 `CURSOR_AGENT_PATH`
-- 指定模型：`CURSOR_AGENT_MODEL=claude-sonnet ./run_knowledge_worker.sh --limit 20`
+- 默认模型：`composer-1.5`，mode：`ask`（无需 stream，直接拿完整输出）
+- 覆盖：`CURSOR_AGENT_MODEL=claude-sonnet CURSOR_AGENT_MODE=agent ./run_knowledge_worker.sh --limit 20`
 
 ### 可选：OpenAI / Anthropic API
 

@@ -3,30 +3,51 @@ function extractPosts() {
   const url = location.href;
 
   if (url.includes('forum-145')) {
-    const threads = document.querySelectorAll('tbody[id^="normalthread_"]');
-    const threadInfos = [];
-    for (const row of threads) {
-      const link = row.querySelector('a.s.xst');
-      if (!link?.href) continue;
-
-      const threadIdMatch = link.href.match(/thread-(\d+)/);
-      const threadId = threadIdMatch ? threadIdMatch[1] : null;
-      if (!threadId) continue;
-
-      let listReplyCount = null;
-      const numCell = row.querySelector('td.num');
-      if (numCell) {
-        const n = parseInt(numCell.textContent.trim(), 10);
-        if (!isNaN(n) && n >= 0) listReplyCount = n;
+    const extractThreads = () => {
+      const threads = document.querySelectorAll('tbody[id^="normalthread_"]');
+      const threadInfos = [];
+      for (const row of threads) {
+        const link = row.querySelector('a.s.xst');
+        if (!link?.href) continue;
+        const threadIdMatch = link.href.match(/thread-(\d+)/);
+        const threadId = threadIdMatch ? threadIdMatch[1] : null;
+        if (!threadId) continue;
+        let listReplyCount = null;
+        const numCell = row.querySelector('td.num');
+        if (numCell) {
+          const n = parseInt(numCell.textContent.trim(), 10);
+          if (!isNaN(n) && n >= 0) listReplyCount = n;
+        }
+        threadInfos.push({ url: link.href, threadId, listReplyCount });
       }
-
-      threadInfos.push({ url: link.href, threadId, listReplyCount });
-    }
-
+      return threadInfos;
+    };
+    const threadInfos = extractThreads();
     if (threadInfos.length > 0) {
       chrome.runtime.sendMessage({ type: "QUEUE_THREADS", payload: threadInfos });
       console.log("Sent QUEUE_THREADS:", threadInfos.length, "threads");
-    } else if (!window.__forumRetried) {
+    }
+    if (!window.__forumLoadMoreDone) {
+      const nextBtn = document.querySelector('a.nxt');
+      const nextText = [...document.querySelectorAll('a')].find(a => /下一页|下页|加载更多|更多|next/i.test(a.textContent.trim()));
+      const btn = nextBtn || nextText;
+      if (btn) {
+        window.__forumLoadMoreDone = true;
+        setTimeout(() => {
+          btn.click();
+          setTimeout(() => {
+            const more = extractThreads();
+            if (more.length > threadInfos.length) {
+              chrome.runtime.sendMessage({ type: "QUEUE_THREADS", payload: more });
+              console.log("Sent QUEUE_THREADS (after load more):", more.length, "threads");
+            }
+          }, 4000);
+        }, 2000);
+      } else if (!window.__forumRetried) {
+        window.__forumRetried = true;
+        setTimeout(() => sendPostsToBackground(), 3000);
+      }
+    } else if (threadInfos.length === 0 && !window.__forumRetried) {
       window.__forumRetried = true;
       setTimeout(() => sendPostsToBackground(), 3000);
     }

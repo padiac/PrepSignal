@@ -1,0 +1,20 @@
+{
+  "company": "Decagon",
+  "direction": "码农类General",
+  "interview_stage": "Phone",
+  "rounds": [
+    {
+      "type": "Practical Coding",
+      "topics": [
+        "LC362变种：滑动窗口内求均值",
+        "init(time_window) / insert(record_id, value, timestamp) / get_avg(timestamp)",
+        "Follow-up: update(record_id, timestamp)，record_id唯一",
+        "优化：timestamp递增用deque/双向链表",
+        "扩展：timestamp乱序用priority queue"
+      ],
+      "notes": "需运行现有test case；题目不难"
+    }
+  ],
+  "detailed_summary": "Decagon电面是一轮Practical Coding，主要考察设计一个支持滑动窗口内求均值的类，与LC362类似。\n\n核心API：\n1. init(time_window)：初始化，指定时间窗口长度\n2. insert(record_id, value, timestamp)：插入一条记录，包含record_id、数值value和时间戳\n3. get_avg(timestamp)：在给定timestamp下，计算当前时间窗口内的平均值\n\n题目明确：insert和get_avg被调用时的timestamp是单调递增的，因此可以直接用deque或双向链表做滑动窗口优化，每次只需从一端移除超出窗口的旧数据。\n\nFollow-up：支持update(record_id, timestamp)。需要clarify的一点是record_id在题目中是unique的。\n\n实现上题目不难，但需要跑通现有test case。\n\n扩展思考：若timestamp乱序，楼内有人建议用priority queue来按时间戳有序track数据，避免乱序导致窗口边界判断错误。\n\n整体为一轮偏实战的编码题，考察数据结构选择（deque vs 双向链表 vs priority queue）与滑动窗口逻辑。",
+  "confidence": 0.88
+}

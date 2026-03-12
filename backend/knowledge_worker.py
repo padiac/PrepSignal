@@ -56,6 +56,20 @@ def _parse_llm_json(text):
             return json.loads(text[: last_brace + 1])
         except json.JSONDecodeError:
             pass
+    # Repair truncated JSON (LLM output cut off mid-string, e.g. in detailed_summary)
+    if text.strip().startswith("{") and '"detailed_summary"' in text:
+        repaired = text.rstrip()
+        if not repaired.endswith("}"):
+            if repaired[-1] not in ('"', "}", "]"):
+                repaired += '"'
+            if '"confidence"' not in repaired[-300:]:
+                repaired += ', "confidence": 0.5'
+            suffixes = ["}", "]}", "}]}", "]}", "}", "]}", "}", "]}", "}", "]"]
+            for suf in suffixes:
+                try:
+                    return json.loads(repaired + suf)
+                except json.JSONDecodeError:
+                    pass
     raise ValueError(f"Invalid JSON from LLM (first 300 chars): {repr(text[:300])}")
 
 DB_PATH = Path(__file__).parent / "raw_posts.db"
@@ -188,7 +202,10 @@ def _find_agent_binary():
 
 
 def call_llm_via_cursor(content, company=None, job_title=None, thread_title=None):
-    """Call LLM via Cursor Agent CLI (agent -p ...)."""
+    """Call LLM via Cursor Agent CLI.
+    Format: agent -p "<prompt>" -f --output-format text --model composer-1.5 --mode ask
+    No streaming (不需要 stream) - capture full output for JSON parsing.
+    """
     agent_path = _find_agent_binary()
     if not agent_path:
         raise RuntimeError(
@@ -202,18 +219,23 @@ def call_llm_via_cursor(content, company=None, job_title=None, thread_title=None
         thread_title=thread_title or "",
     )
     workspace = Path(__file__).parent.resolve()
+    model = os.environ.get("CURSOR_AGENT_MODEL", "composer-1.5")
+    mode = os.environ.get("CURSOR_AGENT_MODE", "ask")
     args = [
         agent_path,
         "-p",
         prompt,
+        "-f",
         "--output-format",
         "text",
+        "--model",
+        model,
+        "--mode",
+        mode,
         "--trust",
         "--workspace",
         str(workspace),
     ]
-    if os.environ.get("CURSOR_AGENT_MODEL"):
-        args.extend(["--model", os.environ["CURSOR_AGENT_MODEL"]])
     result = subprocess.run(
         args,
         capture_output=True,
@@ -228,7 +250,7 @@ def call_llm_via_cursor(content, company=None, job_title=None, thread_title=None
     text = (result.stdout or "").strip()
     if not text:
         raise RuntimeError("Cursor agent returned empty output")
-    return _parse_llm_json(text), "cursor-agent"
+    return _parse_llm_json(text), model
 
 
 def call_llm(content, company=None, job_title=None, thread_title=None):

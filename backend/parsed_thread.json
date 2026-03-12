@@ -1,0 +1,24 @@
+{
+  "company": "Instacart",
+  "direction": "MLE",
+  "interview_stage": "Phone",
+  "rounds": [
+    {
+      "type": "ML Theory / Conceptual",
+      "topics": [
+        "Gradient Descent vs SGD convergence (convex problems)",
+        "Vanilla GD vs Stochastic GD 收敛到同一点的条件",
+        "Learning rate schedule 对 SGD 收敛的影响",
+        "SGD 噪声与 constant learning rate 下的振荡"
+      ],
+      "notes": "候选人自述回答与 ChatGPT 类似，但未提 learning rate schedule，猜测可能因此扣分或 bar 较高需一开始就回答全面"
+    },
+    {
+      "type": "未知",
+      "topics": [],
+      "notes": "主帖内容需积分 200 以上可见，第二轮具体考点无法破译"
+    }
+  ],
+  "detailed_summary": "一亩三分地面经帖，公司为 Instacart，岗位为 Machine Learning Engineer，标题为「新鲜老年MLE电面」。Recruiter 告知流程为两轮电面，通过后才有 VO。主帖正文被积分隐藏（需 200 分，楼主当前 190 分），故完整题目与轮次细节不可见。楼内讨论可推断：至少一轮考查 ML 理论/概念题——关于凸优化下 Vanilla Gradient Descent 与 Stochastic Gradient Descent 的收敛性。参考回答要点：两者在适当 learning rate schedule 下会收敛到同一全局最优；SGD 因单样本估计梯度引入噪声，constant learning rate 下会在最优附近振荡；若 learning rate 随时间衰减，SGD 会与 batch GD 收敛到同一点。发帖人表示自己回答类似，但未强调 learning rate schedule，怀疑要么有细节答错，要么 bar 高、需要一上来就回答得很全面。第二轮及主帖中可能存在的其他题目、coding、系统设计等均因内容隐藏而无法破译。",
+  "confidence": 0.45
+}
