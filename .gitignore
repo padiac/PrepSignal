@@ -1,0 +1,15 @@
+# Python / Backend
+backend/venv/
+backend/__pycache__/
+backend/raw_posts.db
+backend/.pytest_cache/
+*.pyc
+
+# Environment / Config
+.env
+.idea/
+.vscode/
+.DS_Store
+
+# Logs
+*.log

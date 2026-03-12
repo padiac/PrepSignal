@@ -1,0 +1,50 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Collector Control</title>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        padding: 16px;
+        width: 300px;
+      }
+      .form-group {
+        margin-bottom: 12px;
+      }
+      label {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 14px;
+      }
+      input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 6px;
+      }
+      button {
+        width: 100%;
+        padding: 8px;
+        margin-bottom: 8px;
+        cursor: pointer;
+      }
+      pre {
+        background: #f5f5f5;
+        padding: 8px;
+        font-size: 12px;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="form-group">
+      <label for="apiBase">API Base:</label>
+      <input id="apiBase" type="text" placeholder="http://localhost:8000" />
+    </div>
+    <button id="save">Save Config</button>
+    <button id="collect">Collect Current Tab</button>
+    <button id="clearCache" style="background-color: #ffcccc;">Clear Cache</button>
+    <pre id="status">Ready.</pre>
+    <script src="popup.js"></script>
+  </body>
+</html>

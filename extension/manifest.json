@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Interview Post Collector",
+  "version": "0.1.0",
+  "description": "Collect interview posts and send them to ingestion API.",
+  "permissions": ["storage", "activeTab", "scripting", "tabs"],
+  "host_permissions": [
+    "https://www.1point3acres.com/*",
+    "https://your-api.example.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.1point3acres.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  }
+}
