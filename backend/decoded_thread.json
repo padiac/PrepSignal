@@ -1,0 +1,45 @@
+{
+  "company": "Meta",
+  "direction": "MLE",
+  "interview_stage": "VO",
+  "rounds": [
+    {
+      "type": "ML System Design",
+      "topics": [
+        "附近地点推荐：面向可能在移动中的手机用户",
+        "通知推荐排序：整合多源通知（新产品、朋友新动态、广告商投放等）的排序"
+      ],
+      "notes": "第一题为常见题，第二题为少见题"
+    },
+    {
+      "type": "BQ",
+      "topics": [
+        "Most proud project",
+        "Project challenge",
+        "被 pushback 时的应对",
+        "与难相处的人合作",
+        "Past failures",
+        "Constructive feedback you received",
+        "未来打算在哪些方向继续 improve"
+      ],
+      "notes": "以 Most proud project 为主线深入追问，最后简短问未来 improvement"
+    },
+    {
+      "type": "Coding",
+      "topics": [
+        "求数组可组成的次大排列：[1,2,3,4,5]->54312, [1,1,5]->151",
+        "m 个递增数列合并，输出前 K 小数（K 路归并）"
+      ],
+      "notes": null
+    },
+    {
+      "type": "AI-enabled Coding",
+      "topics": [
+        "LC1239: 选词子集使拼接后唯一字符数最大"
+      ],
+      "notes": "Sonnet/Opus 在第三第四个 test 上给不出最优解；第三 test 几千词、第四 test 万词级。作者建议：Meta 虽说不考 DP，仍建议复习 DP，否则 agent 给不出 DP 思路时容易挂"
+    }
+  ],
+  "detailed_summary": "Meta MLE VO 面经。流程包含四类轮次：ML System Design、BQ、Coding、AI-enabled Coding。\n\n【ML System Design】考了两道题。第一道是附近地点推荐，场景是用户可能在移动（mobile），属于常见题。第二道是通知推荐排序，通知来自多个产品源：新产品、朋友新动态、广告商自己投放的广告等，需要设计如何对这些异源通知进行排序推荐，楼主表示此前没见过。\n\n【BQ】以 Most proud project 开场，围绕该项目展开一系列追问：项目中的 challenge、被 pushback 时如何应对、与难相处的人如何协作。之后问了 past failures、constructive feedback you received。最后简短问了未来打算在哪些方向继续 improve 自己。\n\n【Coding】第一题：给定一个数列，求可以组合成的 second largest permutation（次大排列）。例如 [1,2,3,4,5] 的次大排列为 54312（最大为 54321），[1,1,5] 的次大排列为 151。第二题：给 m 个递增数列，合并后输出从小到大前 K 个数，即典型的 K 路归并问题。\n\n【AI-enabled Coding】题目为：Find subset of words with max unique character without duplicates，本质即 LC1239。楼主吐槽此题较毒：用 Sonnet、Opus 等模型都未能给出能通过第三、第四个 test 的最优解；第三 test 有几千个单词，第四 test 有一万多个单词，规模较大。楼主提醒：Meta 虽然常说不太考 DP，但实际面试中仍建议复习 DP，否则当 AI agent 无法给出 DP 思路时，候选人自己若不能补上，容易挂掉。\n\n楼内有人问岗位及为何考 ML System Design，其他回复指出帖子标题/内容已写明是 MLE。",
+  "confidence": 0.88
+}
