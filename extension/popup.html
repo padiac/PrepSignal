@@ -43,21 +43,16 @@
     </div>
     <button id="save">Save Config</button>
     <button id="collect">Collect Current Tab</button>
-    <button id="refreshForum" style="background-color: #e8f5e9;">Refresh Forum Now</button>
-    <button id="processNext" style="background-color: #fff3e0;" title="Manually open next thread in queue">Process Next Now</button>
-    <button id="resumeQueue" style="font-size: 11px;" title="If queue stuck, reschedule the scrape alarm">Resume Queue</button>
     <label style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px;">
       <input type="checkbox" id="fastMode" />
-      <span>Fast mode</span>
+      <span>Fast mode (quick) / off = normal</span>
     </label>
-    <button id="backfill" style="background-color: #e6f3ff;" title="Re-queue all threads on next forum-145 visit to backfill metadata">Backfill Metadata</button>
-    <button id="clearCache" style="background-color: #ffcccc;">Clear Cache</button>
     <div class="form-group" style="margin-top: 8px; padding: 8px; background: #f0f0f0; border-radius: 4px; font-size: 12px;">
       <strong>Status</strong><br>
       <span id="queueStatus">-</span><br>
-      <span id="apiStatus">-</span>
+      <span id="apiStatus">-</span><br>
+      <span id="status" style="font-size:11px;color:#666;"></span>
     </div>
-    <pre id="status">Ready.</pre>
     <script src="popup.js"></script>
   </body>
 </html>

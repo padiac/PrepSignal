@@ -1,0 +1,19 @@
+{
+  "company": "Ramp",
+  "direction": "SDE Frontend",
+  "interview_stage": "OA",
+  "rounds": [
+    {
+      "type": "Coding OA",
+      "topics": [
+        "与本站另一帖相同的实现题",
+        "文件内指定字符串替换",
+        "CommonJS与ESM模块导出(module.exports vs export)",
+        "Unit Test调试与修复"
+      ],
+      "notes": "题目标注只替换某string、勿改其余；实际存在import/module配置错误，改export语法可修复unit test；作者改export后全过仍被拒"
+    }
+  ],
+  "detailed_summary": "这是一则Ramp公司Frontend Engineer岗位的OA面经。\n\n【流程与轮次】\n仅一轮：在线编程OA，无后续电话面试或VO信息。\n\n【题目与实现】\n题目内容与一亩三分地本站的另一篇帖子相同，帖主未复述具体题干，但说明实现难度不高。核心实现包含：在某个文件中替换一个指定字符串。该文件内有明确comment要求：只能替换该string，不能改动其他内容，否则unit test不会通过。\n\n【Unit Test问题】\n实际做题时unit test无法通过。帖主分析可能是出题方错误：要么题目文件有问题，要么test的import写法错误，导致unit test报错。具体表现为：文件中使用了CommonJS的module.exports；将其直接改为ESM写法（export {obj}）后，unit test不再报错。帖主也提到或许修改test文件也能解决，但题目似乎未要求改test file，因此未细究。帖主对出题方有负面评价。\n\n【做题结果与后续】\n提前约15分钟完成，所有test case均通过。最终仍被拒。帖主怀疑是否因为无视了comment中“只替换string”的说明、擅自修改了export语法导致被拒，对公司表示不满。\n\n【对准备的价值】\n1）Ramp前端OA可能涉及字符串处理类实现题，难度不高；2）需注意OA环境可能存在模块系统配置（CommonJS/ESM）相关坑；3）即便test全过，也可能因未严格按题目/注释要求（如只替换指定内容）而被判定不合格，建议遵守题目约束。",
+  "confidence": 0.72
+}

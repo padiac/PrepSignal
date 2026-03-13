@@ -33,7 +33,7 @@ async function scheduleNextScrape(delayInMinutes) {
   const { fastMode } = await chrome.storage.local.get(["fastMode"]);
 
   if (fastMode) {
-    delay = 0.05;
+    delay = 0.5;  // Chrome MV3 minimum is 30 sec
   } else if (typeof delay === "undefined") {
     const rand = Math.random();
     if (rand < 0.50) {
@@ -61,7 +61,9 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
         if (tab?.id) chrome.tabs.remove(tab.id).catch(() => {});
       }, 45000);
     } catch (_) {}
-    chrome.alarms.create("forumRefresh", { delayInMinutes: Math.random() * 120 + 240 });
+    const { fastMode } = await chrome.storage.local.get(["fastMode"]);
+    const forumDelay = fastMode ? 0.5 : Math.random() * 120 + 240;  // 30 sec vs 4–6 hr
+    chrome.alarms.create("forumRefresh", { delayInMinutes: forumDelay });
   }
 });
 
@@ -120,17 +122,22 @@ async function processNextInQueue() {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === "ENSURE_RESUME") {
-    maybeResumeQueue().then(() => sendResponse({ ok: true }));
-    return true;
-  }
-
-  if (message.type === "TRIGGER_NEXT_SCRAPE") {
+  if (message.type === "KICKSTART") {
     (async () => {
-      const queueBefore = await getQueue();
-      const done = await processNextInQueue();
-      const queueAfter = await getQueue();
-      sendResponse({ ok: true, triggered: done, queueBefore: queueBefore.length, queueAfter: queueAfter.length });
+      try {
+        const queue = await getQueue();
+        if (queue.length > 0) {
+          await processNextInQueue();
+        }
+        await chrome.tabs.create({ url: FORUM_145_URL, active: false });
+        chrome.alarms.clear("forumRefresh");
+        const { fastMode } = await chrome.storage.local.get(["fastMode"]);
+        const forumDelay = fastMode ? 0.5 : Math.random() * 120 + 240;
+        chrome.alarms.create("forumRefresh", { delayInMinutes: forumDelay });
+        sendResponse({ ok: true, queueSize: queue.length });
+      } catch (e) {
+        sendResponse({ ok: false, error: e.message });
+      }
     })();
     return true;
   }
@@ -140,20 +147,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const queue = await getQueue();
       const { apiBase } = await getConfig();
       const threadInfos = message.payload;
-      const { backfillMode: bf } = await chrome.storage.local.get(["backfillMode"]);
-      const backfillMode = bf === true;
-      if (backfillMode) await chrome.storage.local.set({ backfillMode: false });
       if (!Array.isArray(threadInfos) || threadInfos.length === 0) {
         sendResponse({ ok: true });
         return;
       }
 
       const threadIds = threadInfos.map((t) => t?.threadId).filter(Boolean);
-      const dbCounts = backfillMode ? {} : await fetchThreadPostCounts(threadIds, apiBase);
+      const dbCounts = await fetchThreadPostCounts(threadIds, apiBase);
 
       let added = 0;
       const queueUrls = new Set(queue);
 
+      const { fastMode } = await chrome.storage.local.get(["fastMode"]);
       for (const info of threadInfos) {
         const url = info?.url;
         const threadId = info?.threadId;
@@ -161,11 +166,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (!url || !threadId || queueUrls.has(url)) continue;
 
         const dbCount = dbCounts[threadId] ?? 0;
-        const hasNewContent =
-          backfillMode ||
+        let hasNewContent =
           listReplyCount == null ||
           dbCount === 0 ||
           listReplyCount + 1 > dbCount;
+        if (fastMode && added < 5) {
+          hasNewContent = true;
+        }
 
         if (hasNewContent) {
           queue.push(url);
@@ -178,8 +185,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         await saveQueue(queue);
         const alarm = await chrome.alarms.get("scrapeTick");
         if (!alarm) {
-          const { fastMode } = await chrome.storage.local.get(["fastMode"]);
-          scheduleNextScrape(fastMode ? 0.05 : 5 + Math.random() * 10);
+          scheduleNextScrape(fastMode ? 0.5 : 5 + Math.random() * 10);
         }
       }
       sendResponse({ ok: true, added });
@@ -233,7 +239,7 @@ async function ensureForumRefreshAlarm() {
   const alarm = await chrome.alarms.get("forumRefresh");
   if (!alarm) {
     const { fastMode } = await chrome.storage.local.get(["fastMode"]);
-    const delay = fastMode ? 0.5 + Math.random() : Math.random() * 60 + 60;
+    const delay = fastMode ? 0.5 : Math.random() * 60 + 60;  // 30 sec vs 1–2 hr
     chrome.alarms.create("forumRefresh", { delayInMinutes: delay });
   }
 }

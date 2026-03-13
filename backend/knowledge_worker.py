@@ -371,6 +371,7 @@ def main():
     import argparse
     p = argparse.ArgumentParser(description="Parse raw_posts with LLM into interpreted_posts")
     p.add_argument("--limit", type=int, default=10, help="Max threads to process")
+    p.add_argument("--all", action="store_true", help="Process all unparsed (ignore --limit)")
     p.add_argument("--dry-run", action="store_true", help="Don't call LLM or write DB")
     p.add_argument(
         "--cursor",
@@ -386,7 +387,8 @@ def main():
         help="Use OpenAI/Anthropic API instead of Cursor",
     )
     args = p.parse_args()
-    limit, dry_run = args.limit, args.dry_run
+    limit = None if args.all else args.limit
+    dry_run = args.dry_run
     use_cursor = args.use_cursor and not args.use_api
 
     if not DB_PATH.exists():
@@ -406,10 +408,14 @@ def main():
     thread_ids = get_unparsed_thread_ids(conn)
     orphan_ids = get_unparsed_orphan_post_ids(conn)
     # Work queue: (type, id) -> "thread"/"orphan", thread_id or post_id
-    work = [("thread", tid) for tid in thread_ids[:limit]]
-    remaining = limit - len(work)
-    if remaining > 0:
-        work.extend([("orphan", pid) for pid in orphan_ids[:remaining]])
+    if limit is None:
+        work = [("thread", tid) for tid in thread_ids]
+        work.extend([("orphan", pid) for pid in orphan_ids])
+    else:
+        work = [("thread", tid) for tid in thread_ids[:limit]]
+        remaining = limit - len(work)
+        if remaining > 0:
+            work.extend([("orphan", pid) for pid in orphan_ids[:remaining]])
     print(f"Found {len(thread_ids)} unparsed threads, {len(orphan_ids)} orphan posts. Processing {len(work)}.")
 
     for work_type, work_id in work:

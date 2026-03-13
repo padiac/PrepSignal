@@ -7,5 +7,5 @@ cd "$(dirname "$0")"
 LOG="$PWD/knowledge_worker.log"
 exec >> "$LOG" 2>&1
 echo "=== $(date -Iseconds) ==="
-./run_knowledge_worker.sh --limit 20
+./run_knowledge_worker.sh --all
 echo ""
