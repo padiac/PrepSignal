@@ -100,8 +100,11 @@ company={company}, job_title={job_title}, thread_title={thread_title}
    - notes: 若有补充说明
    
    Coding 题写法（仅针对 topics 里的算法题）：
-   - 能对应 LeetCode：直接写 LC题号
-   - 不能明确对应：用最短语言描述题意，尽量 10 字以内
+   - 每道题写成 "简短题意 (LC题号/算法pattern)" 的格式
+   - 能直接对应 LeetCode 原题：写 LC题号，如 "LC23"
+   - 是某 LC 题的变种：写 "LC题号 变种"，如 "次大排列 (LC31 Next Permutation 变种)"
+   - 无法对应具体 LC 题：写最接近的算法 pattern，如 "Valid bookings (Interval Scheduling / LC252 变种)"
+   - 核心要求：面经原文的描述必须被「翻译」成可检索的算法知识，这是 knowledge worker 的核心价值
 
 3. **detailed_summary**
    完整展开的总结，越详细越好。包括：
@@ -124,7 +127,7 @@ company={company}, job_title={job_title}, thread_title={thread_title}
   "rounds": [
     {{"type": "ML SD", "topics": ["地点推荐", "通知排序"], "notes": null}},
     {{"type": "BQ", "topics": ["pushback", "failure", "feedback"], "notes": null}},
-    {{"type": "Coding", "topics": ["次大排列", "K路归并", "LC1239"], "notes": null}}
+    {{"type": "Coding", "topics": ["次大排列 (LC31 Next Permutation 变种)", "m个有序数列取前K小 (LC23 K路归并)", "LC1239 Maximum Length of a Concatenated String with Unique Characters"], "notes": null}}
   ],
   "detailed_summary": "完整展开的破译结果...",
   "confidence": 0.85
