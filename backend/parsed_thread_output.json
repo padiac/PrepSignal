@@ -1,20 +1,16 @@
 {
-  "company": "Decagon",
+  "company": "Quora",
   "direction": "码农类General",
-  "interview_stage": "Phone",
+  "interview_stage": null,
   "rounds": [
     {
-      "type": "Practical Coding",
+      "type": "Coding",
       "topics": [
-        "LC362变种：滑动窗口内求均值",
-        "init(time_window) / insert(record_id, value, timestamp) / get_avg(timestamp)",
-        "Follow-up: update(record_id, timestamp)，record_id唯一",
-        "优化：timestamp递增用deque/双向链表",
-        "扩展：timestamp乱序用priority queue"
+        "计算长度2/3/4子序列或表达式的可能结果数 (LC494 Target Sum 变种)"
       ],
-      "notes": "需运行现有test case；题目不难"
+      "notes": "主帖仅描述一道题，无轮次、流程等其它信息。题意：在 LC494 Target Sum 的基础上，改为对长度为 2、3、4 的某种组合/子序列分别统计有多少种可能的结果；具体是子集和、表达式长度还是序列长度需结合面试现场澄清。"
     }
   ],
-  "detailed_summary": "Decagon电面是一轮Practical Coding，主要考察设计一个支持滑动窗口内求均值的类，与LC362类似。\n\n核心API：\n1. init(time_window)：初始化，指定时间窗口长度\n2. insert(record_id, value, timestamp)：插入一条记录，包含record_id、数值value和时间戳\n3. get_avg(timestamp)：在给定timestamp下，计算当前时间窗口内的平均值\n\n题目明确：insert和get_avg被调用时的timestamp是单调递增的，因此可以直接用deque或双向链表做滑动窗口优化，每次只需从一端移除超出窗口的旧数据。\n\nFollow-up：支持update(record_id, timestamp)。需要clarify的一点是record_id在题目中是unique的。\n\n实现上题目不难，但需要跑通现有test case。\n\n扩展思考：若timestamp乱序，楼内有人建议用priority queue来按时间戳有序track数据，避免乱序导致窗口边界判断错误。\n\n整体为一轮偏实战的编码题，考察数据结构选择（deque vs 双向链表 vs priority queue）与滑动窗口逻辑。",
-  "confidence": 0.88
+  "detailed_summary": "帖子来自 1point3acres，公司为 Quora，岗位为码农类 General。主帖内容极其简短，仅提及一道 Coding 题。\n\n题目描述：\n- 原文：\"类似于里口药酒伞领的变型，计算长度2/3/4分别有多少个可能的结果。\"\n- 里口药酒伞领 = 力扣494，即 LC494 Target Sum\n- LC494 原题：给定整数数组与目标值，对每个数可加 + 或 -，求有多少种方式使表达式结果等于目标值\n- 变种：不是求等于某目标的方式数，而是分别对「长度 2」「长度 3」「长度 4」的某种组合（子集/子序列/表达式）统计有多少种可能的结果\n- 难点：\n  - 需明确「长度」指子集大小、子序列长度还是表达式项数\n  - 需明确「可能的结果」指不同和值、不同表达式结果还是其他\n  - 若为子集和计数，可结合 DP 或 DFS + 状态压缩\n\n缺失信息：\n- 无整体轮次（OA/Phone/VO/Onsite）\n- 无其它轮型（BQ、系统设计等）\n- 无题目完整约束、数据规模、 follow-up\n- 无面试流程、时长、反馈",
+  "confidence": 0.55
 }
