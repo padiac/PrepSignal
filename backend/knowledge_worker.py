@@ -56,21 +56,131 @@ def _parse_llm_json(text):
             return json.loads(text[: last_brace + 1])
         except json.JSONDecodeError:
             pass
-    # Repair truncated JSON (LLM output cut off mid-string, e.g. in detailed_summary)
-    if text.strip().startswith("{") and '"detailed_summary"' in text:
-        repaired = text.rstrip()
-        if not repaired.endswith("}"):
-            if repaired[-1] not in ('"', "}", "]"):
-                repaired += '"'
-            if '"confidence"' not in repaired[-300:]:
-                repaired += ', "confidence": 0.5'
-            suffixes = ["}", "]}", "}]}", "]}", "}", "]}", "}", "]}", "}", "]"]
-            for suf in suffixes:
-                try:
-                    return json.loads(repaired + suf)
-                except json.JSONDecodeError:
-                    pass
+    # General truncated JSON repair: close all open brackets/strings
+    if text.strip().startswith("{"):
+        repaired = _repair_truncated_json(text.strip())
+        if repaired is not None:
+            return repaired
     raise ValueError(f"Invalid JSON from LLM (first 300 chars): {repr(text[:300])}")
+
+
+def _repair_truncated_json(text):
+    """Repair truncated JSON by closing all open strings, arrays and objects.
+
+    Handles cases where LLM output is cut off mid-string or mid-structure,
+    e.g. in the middle of rounds/topics/detailed_summary.
+    """
+    # Strip trailing whitespace and incomplete tokens
+    s = text.rstrip()
+
+    # If it already parses, return
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError:
+        pass
+
+    # Detect if we're inside an unclosed string by scanning for unescaped quotes
+    in_string = False
+    escape = False
+    for ch in s:
+        if escape:
+            escape = False
+            continue
+        if ch == '\\':
+            escape = True
+            continue
+        if ch == '"':
+            in_string = not in_string
+
+    # If truncated inside a string, close the string
+    if in_string:
+        s += '"'
+
+    # Fix trailing commas
+    s = re.sub(r",\s*$", "", s)
+
+    # Count open brackets/braces and close them
+    opens = []
+    in_str = False
+    esc = False
+    for ch in s:
+        if esc:
+            esc = False
+            continue
+        if ch == '\\':
+            esc = True
+            continue
+        if ch == '"':
+            in_str = not in_str
+            continue
+        if in_str:
+            continue
+        if ch in ('{', '['):
+            opens.append(ch)
+        elif ch == '}' and opens and opens[-1] == '{':
+            opens.pop()
+        elif ch == ']' and opens and opens[-1] == '[':
+            opens.pop()
+
+    # Build closing suffix
+    closing = ""
+    for bracket in reversed(opens):
+        closing += "]" if bracket == "[" else "}"
+
+    # Try with trailing comma removal + closing brackets
+    candidate = re.sub(r",\s*$", "", s) + closing
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError:
+        pass
+
+    # Try adding missing fields before final close
+    # If confidence field is missing, add it
+    if '"confidence"' not in s[-500:]:
+        candidate = re.sub(r",\s*$", "", s) + closing[:-1] + ', "confidence": 0.5}'
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            pass
+
+    # More aggressive: strip back to last complete value, then close
+    # Remove trailing partial key-value pairs
+    for trim in range(1, min(200, len(s))):
+        trimmed = s[:-trim]
+        # Try to find a clean cut point (after a comma, closing bracket, or closing brace)
+        if trimmed and trimmed[-1] in (',', ']', '}', '"'):
+            trimmed_clean = re.sub(r",\s*$", "", trimmed)
+            # Recount brackets for the trimmed version
+            opens2 = []
+            in_str2 = False
+            esc2 = False
+            for ch in trimmed_clean:
+                if esc2:
+                    esc2 = False
+                    continue
+                if ch == '\\':
+                    esc2 = True
+                    continue
+                if ch == '"':
+                    in_str2 = not in_str2
+                    continue
+                if in_str2:
+                    continue
+                if ch in ('{', '['):
+                    opens2.append(ch)
+                elif ch == '}' and opens2 and opens2[-1] == '{':
+                    opens2.pop()
+                elif ch == ']' and opens2 and opens2[-1] == '[':
+                    opens2.pop()
+            closing2 = ""
+            for bracket in reversed(opens2):
+                closing2 += "]" if bracket == "[" else "}"
+            try:
+                return json.loads(trimmed_clean + closing2)
+            except json.JSONDecodeError:
+                continue
+
+    return None
 
 DB_PATH = Path(__file__).parent / "raw_posts.db"
 
@@ -202,6 +312,122 @@ def _find_agent_binary():
         if found:
             return found
     return None
+
+
+def _find_claude_binary():
+    """Find Claude Code CLI binary. Prefers env var, then PATH."""
+    path = os.environ.get("CLAUDE_CODE_PATH")
+    if path and os.path.isfile(path):
+        return path
+    found = shutil.which("claude")
+    if found:
+        return found
+    return None
+
+
+_KW_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "company": {"type": ["string", "null"]},
+        "direction": {"type": ["string", "null"]},
+        "interview_stage": {"type": ["string", "null"]},
+        "rounds": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "type": {"type": ["string", "null"]},
+                    "topics": {"type": "array", "items": {"type": "string"}},
+                    "notes": {"type": ["string", "null"]},
+                },
+                "required": ["type", "topics"],
+            },
+        },
+        "detailed_summary": {"type": ["string", "null"]},
+        "confidence": {"type": ["number", "null"]},
+    },
+    "required": ["company", "rounds", "detailed_summary", "confidence"],
+}
+
+
+def call_llm_via_claude_code(content, company=None, job_title=None, thread_title=None):
+    """Call LLM via Claude Code CLI in --bare mode with --json-schema for guaranteed valid JSON.
+
+    --bare: skip hooks/LSP/plugins/CLAUDE.md/auto-memory/skills => pure single-call behavior
+    --output-format json: wrapper JSON includes stop_reason and structured_output
+    --json-schema: enforces the schema, returns parsed result in structured_output field
+    --tools "": disable all tools so model can't decide to "use a tool" instead of answering
+    """
+    claude_path = _find_claude_binary()
+    if not claude_path:
+        raise RuntimeError(
+            "Claude Code CLI not found. Set CLAUDE_CODE_PATH or ensure 'claude' is in PATH. "
+            "Install: npm install -g @anthropic-ai/claude-code"
+        )
+    prompt = PROMPT.format(
+        content=content,
+        company=company or "unknown",
+        job_title=job_title or "",
+        thread_title=thread_title or "",
+    )
+    model = os.environ.get("CLAUDE_CODE_MODEL", "sonnet")
+    # Tool selection per task: parsing 一亩三分地 posts requires resolving
+    # 黑话/缩写/中文LC题号 — allow WebSearch+WebFetch for verification when
+    # the model is unsure. Block everything else (no filesystem/code execution
+    # needed — content is fully in the prompt).
+    # --setting-sources "" skips CLAUDE.md/skills (irrelevant to this task).
+    # --json-schema enforces the SQLite-bound schema server-side.
+    # --bare avoided: it would force ANTHROPIC_API_KEY and disable OAuth.
+    args = [
+        claude_path,
+        "-p",
+        prompt,
+        "--output-format",
+        "json",
+        "--json-schema",
+        json.dumps(_KW_SCHEMA),
+        "--tools",
+        "WebSearch,WebFetch",
+        "--setting-sources",
+        "",
+        "--model",
+        model,
+    ]
+    result = subprocess.run(
+        args,
+        capture_output=True,
+        text=True,
+        timeout=600,
+        cwd=str(Path(__file__).parent.resolve()),
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"Claude Code failed (exit {result.returncode}): {result.stderr or result.stdout}"
+        )
+    raw = (result.stdout or "").strip()
+    if not raw:
+        raise RuntimeError("Claude Code returned empty output")
+    try:
+        wrapper = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"Claude Code wrapper JSON parse failed: {e}; raw[:300]={raw[:300]!r}")
+    if wrapper.get("is_error"):
+        raise RuntimeError(f"Claude Code API error: {wrapper.get('result') or wrapper}")
+    # Preferred path: structured_output (guaranteed schema-conformant)
+    structured = wrapper.get("structured_output")
+    if structured:
+        return structured, f"claude-code/{model}"
+    # Fallback: parse result text (handles markdown-wrapped JSON)
+    stop_reason = wrapper.get("stop_reason")
+    text = (wrapper.get("result") or "").strip()
+    if not text:
+        raise RuntimeError(f"Claude Code returned no result text; stop_reason={stop_reason}")
+    parsed = _parse_llm_json(text)
+    if parsed is None:
+        raise RuntimeError(
+            f"Claude Code text parse failed; stop_reason={stop_reason}; text[:300]={text[:300]!r}"
+        )
+    return parsed, f"claude-code/{model}"
 
 
 def call_llm_via_cursor(content, company=None, job_title=None, thread_title=None):
@@ -376,23 +602,33 @@ def main():
     p.add_argument("--limit", type=int, default=10, help="Max threads to process")
     p.add_argument("--all", action="store_true", help="Process all unparsed (ignore --limit)")
     p.add_argument("--dry-run", action="store_true", help="Don't call LLM or write DB")
-    p.add_argument(
+    backend_group = p.add_mutually_exclusive_group()
+    backend_group.add_argument(
+        "--claude",
+        action="store_const",
+        dest="backend",
+        const="claude",
+        help="Use Claude Code CLI (default)",
+    )
+    backend_group.add_argument(
         "--cursor",
-        action="store_true",
-        dest="use_cursor",
-        default=True,
-        help="Use Cursor Agent CLI (default)",
+        action="store_const",
+        dest="backend",
+        const="cursor",
+        help="Use Cursor Agent CLI",
     )
-    p.add_argument(
+    backend_group.add_argument(
         "--api",
-        action="store_true",
-        dest="use_api",
-        help="Use OpenAI/Anthropic API instead of Cursor",
+        action="store_const",
+        dest="backend",
+        const="api",
+        help="Use OpenAI/Anthropic API directly",
     )
+    p.set_defaults(backend="claude")
     args = p.parse_args()
     limit = None if args.all else args.limit
     dry_run = args.dry_run
-    use_cursor = args.use_cursor and not args.use_api
+    backend = args.backend
 
     if not DB_PATH.exists():
         print(f"DB not found: {DB_PATH}")
@@ -401,12 +637,20 @@ def main():
     conn = sqlite3.connect(DB_PATH)
     init_interpreted_table(conn)
 
-    if use_cursor:
+    if backend == "claude":
+        claude_path = _find_claude_binary()
+        if not claude_path:
+            print("ERROR: Claude Code CLI not found. Install: npm install -g @anthropic-ai/claude-code")
+            sys.exit(1)
+        print(f"Using Claude Code CLI: {claude_path}")
+    elif backend == "cursor":
         agent_path = _find_agent_binary()
         if not agent_path:
             print("ERROR: Cursor agent not found. Set CURSOR_AGENT_PATH or ensure 'agent' is in PATH.")
             sys.exit(1)
         print(f"Using Cursor Agent CLI: {agent_path}")
+    else:
+        print("Using API directly")
 
     thread_ids = get_unparsed_thread_ids(conn)
     orphan_ids = get_unparsed_orphan_post_ids(conn)
@@ -446,20 +690,18 @@ def main():
             print("    [dry-run skip]")
             continue
         try:
-            if use_cursor:
-                parsed, model = call_llm_via_cursor(
-                    aggregated,
-                    company=first.get("company"),
-                    job_title=first.get("job_title"),
-                    thread_title=first.get("thread_title"),
-                )
+            call_kwargs = dict(
+                content=aggregated,
+                company=first.get("company"),
+                job_title=first.get("job_title"),
+                thread_title=first.get("thread_title"),
+            )
+            if backend == "claude":
+                parsed, model = call_llm_via_claude_code(**call_kwargs)
+            elif backend == "cursor":
+                parsed, model = call_llm_via_cursor(**call_kwargs)
             else:
-                parsed, model = call_llm(
-                    aggregated,
-                    company=first.get("company"),
-                    job_title=first.get("job_title"),
-                    thread_title=first.get("thread_title"),
-                )
+                parsed, model = call_llm(**call_kwargs)
             insert_interpreted(conn, anchor_id, parsed, model)
             summary_preview = (parsed.get("detailed_summary") or parsed.get("summary") or "")[:60]
             print(f"    -> {parsed.get('company')} / {parsed.get('interview_stage')} / {summary_preview}...")

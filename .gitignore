@@ -2,13 +2,21 @@
 backend/venv/
 backend/__pycache__/
 backend/raw_posts.db
+backend/prepsignal.db
 backend/.pytest_cache/
 *.pyc
+
+# Scratch / test outputs
+backend/*_parsed.json
+backend/thread_parse_output.json
+backend/brief_*.md
+reports/
 
 # Environment / Config
 .env
 .idea/
 .vscode/
+.claude/
 .DS_Store
 
 # Logs
