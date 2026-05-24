@@ -3,3 +3,6 @@ pydantic
 uvicorn
 openai
 anthropic
+requests
+beautifulsoup4
+lxml
