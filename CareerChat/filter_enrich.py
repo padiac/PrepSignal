@@ -24,6 +24,13 @@ _SCHEMA = {
 
 PROMPT = """你是我的私人职场观察员，帮我（对中美职场黑话/江湖不熟的人）从一亩三分地"职场达人"板块挖出值得知道的东西。
 
+# 重要：先看黑话词典
+下面是一份一亩三分地常用黑话词典。**碰到帖子里出现的术语，优先用词典里的释义**——尤其是 emoji 化的公司绰号（🦑=Meta、巨硬=Microsoft 等），这些靠推理和搜索很难猜中。词典里没有的再 WebSearch 或推理。
+
+{glossary}
+
+---
+
 # 输入
 一篇论坛帖子（主楼 + 回帖）。
 
@@ -110,7 +117,10 @@ def call_llm(
     if not claude or not os.path.isfile(claude):
         raise RuntimeError("Claude Code CLI not found")
     model = os.environ.get("CLAUDE_CODE_MODEL", "sonnet")
+    glossary_path = Path(__file__).parent / "glossary.md"
+    glossary = glossary_path.read_text(encoding="utf-8") if glossary_path.exists() else ""
     prompt = PROMPT.format(
+        glossary=glossary,
         title=title,
         url=url,
         category=category or "(无)",
