@@ -21,3 +21,8 @@ reports/
 
 # Logs
 *.log
+
+# CareerChat runtime
+CareerChat/*.db
+CareerChat/*.log
+CareerChat/__pycache__/
