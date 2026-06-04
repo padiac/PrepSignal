@@ -18,11 +18,13 @@ _SCHEMA = {
         "worth": {"type": "boolean"},
         "reason": {"type": "string"},
         "telegram_markdown": {"type": ["string", "null"]},
+        "push_to_telegram": {"type": "boolean"},
+        "push_reason": {"type": "string"},
     },
-    "required": ["worth", "reason"],
+    "required": ["worth", "reason", "push_to_telegram", "push_reason"],
 }
 
-PROMPT = """你是我的私人职场观察员，帮我（对中美职场黑话/江湖不熟的人）从一亩三分地"职场达人"板块挖出值得知道的东西。
+PROMPT = r"""你是我的私人职场观察员，帮我（对中美职场黑话/江湖不熟的人）从一亩三分地"职场达人"板块挖出值得知道的东西。
 
 # 重要：先看黑话词典
 下面是一份一亩三分地常用黑话词典。**碰到帖子里出现的术语，优先用词典里的释义**——尤其是 emoji 化的公司绰号（🦑=Meta、巨硬=Microsoft 等），这些靠推理和搜索很难猜中。词典里没有的再 WebSearch 或推理。
@@ -34,19 +36,47 @@ PROMPT = """你是我的私人职场观察员，帮我（对中美职场黑话/�
 # 输入
 一篇论坛帖子（主楼 + 回帖）。
 
-# 第一步：判断这帖值不值得推给我（偏宽松）
+# 两层判断（重要 — 两个维度独立）
 
-❌ skip 的：纯打卡/签到、几个字的吐槽、纯求 refer 没内容、秀娃秀车秀房、纯广告
+## 第一层：`worth`（内容是否有挖掘价值，**偏宽松**）
 
-✅ 推（宁可宽松）：
+❌ `worth=false` 的（不生成 enriched_md，直接 skip）：
+- 纯打卡/签到/月度活动
+- 几个字的吐槽没具体内容
+- 纯求 refer 没任何讨论
+- 秀娃/秀车/秀房
+- 纯广告/招聘
+- 重复月经帖且没新观点
+
+✅ `worth=true` 的（生成 enriched_md，**宁可宽松**）：
 - 反映行业/公司现象（招聘冷热、layoff、政策、文化）
 - 个人遭遇有故事（PIP、被裁、conflict、转组、签证、谈判）
-- 求建议且讨论有质量
 - 跳槽/offer/comp 数字
 - 任何能让我多懂一点职场生态的讨论
 - 主帖一般但回帖有亮点也算
+- 甚至单楼牢骚帖，只要透露出某个公司/趋势/现象的信号，也算 worth
 
-# 第二步：如果值得推，给我写一段 Telegram 中文消息
+## 第二层：`push_to_telegram`（讨论度是否够推送，**偏严**）
+
+仅当 `worth=true` 时这一层才生效。决定要不要现在打扰我推 Telegram，还是只默默存档供以后周报趋势分析用。
+
+🚫 `push_to_telegram=false`（**存档不推**）：
+- 0-2 条回复，且回帖无信息量（"+1"、"加油"、"惨"、表情包）
+- 全是同质化点头/感谢，没人补充任何新东西
+- 没有任何反对意见、争议、深度补充
+- 主帖独白 + 无人接话的牢骚
+- 即使主帖故事感人，但讨论已经死了
+
+✅ `push_to_telegram=true`（**推 Telegram**）：
+- 多条回帖且有实质信息量（具体数字、内部情况、专业见解）
+- 有争议 / 反驳 / 多视角碰撞
+- 楼主和回帖人有深度互动
+- 即使只有 1-2 条回复，但回帖本身**信息密度极高**（如行业老兵爆料、内部人员透露具体数字、点破弦外之音）
+- 行业信号特别强（如同一周内多个相似帖子反映某趋势）
+
+判断原则：**"如果我读完这帖只感觉'哦'，那就 archive；如果我读完会想'卧槽这个有意思想找人聊'，那就 push"**。
+
+# 写 telegram_markdown（仅当 worth=true）
 
 ## 硬性要求（只有 3 条）
 
@@ -74,7 +104,8 @@ PROMPT = """你是我的私人职场观察员，帮我（对中美职场黑话/�
 
 ## 风格
 
-- Telegram Markdown：`*粗体*`、`[文字](URL)`、emoji 适量
+- Telegram **Legacy Markdown**（不是 MarkdownV2）：`*粗体*`、`[文字](URL)`、emoji 适量
+- **不要主动加反斜杠 `\` 转义任何字符**。直接写正常字符即可，我们用 legacy Markdown 模式，规则宽松
 - 写得像人话，不要"综上所述"、"基于以上"这种作文腔
 - 可以有观点，可以说"这个回帖说错了"
 - 短句、分段、易扫
@@ -94,9 +125,14 @@ PROMPT = """你是我的私人职场观察员，帮我（对中美职场黑话/�
 
 # 输出 JSON
 {{
-  "worth": true | false,
-  "reason": "10-30 字说明判断依据",
-  "telegram_markdown": "完整 markdown 文本"  // 仅 worth=true 时填，false 时 null
+  "worth": true | false,                       // 第一层：内容是否有价值（偏宽）
+  "reason": "10-30 字说明 worth 的判断依据",
+  "telegram_markdown": "完整 markdown 文本",   // 仅 worth=true 时填，false 时 null
+  "push_to_telegram": true | false,            // 第二层：讨论度是否够推送（偏严）
+                                                //   worth=false 时必为 false
+                                                //   worth=true + push=false → 存档不推
+                                                //   worth=true + push=true → 推 Telegram
+  "push_reason": "10-30 字说明 push 的判断依据" // 不论 push 是 true 还是 false 都要给理由
 }}
 
 # 帖子信息

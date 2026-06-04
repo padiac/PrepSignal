@@ -46,6 +46,14 @@ def ensure_db():
     conn = sqlite3.connect(DB_PATH)
     try:
         conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+        # Migration: add push_decision / push_reason columns to pre-existing DBs
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(seen_threads)").fetchall()}
+        if "push_decision" not in cols:
+            conn.execute("ALTER TABLE seen_threads ADD COLUMN push_decision TEXT")
+        if "push_reason" not in cols:
+            conn.execute("ALTER TABLE seen_threads ADD COLUMN push_reason TEXT")
+        # Index may not exist on old DBs
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_push_decision ON seen_threads(push_decision)")
         conn.commit()
     finally:
         conn.close()
@@ -63,14 +71,17 @@ def record_decision(
     reason: str | None = None,
     enriched_md: str | None = None,
     model_name: str | None = None,
+    push_decision: str | None = None,
+    push_reason: str | None = None,
     sent: bool = False,
 ):
     conn.execute(
         """
         INSERT OR REPLACE INTO seen_threads
             (thread_id, title, url, category, author, first_post_date,
-             decision, reason, enriched_md, model_name, sent_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             decision, reason, enriched_md, model_name,
+             push_decision, push_reason, sent_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             thread["thread_id"],
@@ -83,6 +94,8 @@ def record_decision(
             reason,
             enriched_md,
             model_name,
+            push_decision,
+            push_reason,
             datetime.utcnow().isoformat() if sent else None,
         ),
     )
@@ -169,21 +182,51 @@ def run_tick(dry_run: bool = False, max_new: int = 10, send: bool = True):
                 worth = bool(parsed.get("worth"))
                 reason = parsed.get("reason") or ""
                 md = parsed.get("telegram_markdown")
-                print(f"  LLM: worth={worth} ({reason})")
-                if worth and md and send:
+                push_to_telegram = bool(parsed.get("push_to_telegram"))
+                push_reason = parsed.get("push_reason") or ""
+                print(f"  LLM: worth={worth} | push={push_to_telegram}")
+                print(f"       worth_reason: {reason}")
+                print(f"       push_reason:  {push_reason}")
+
+                if not worth:
+                    # No content value — skip entirely, no enriched_md
+                    record_decision(conn, t, decision="skip", reason=reason, model_name=model)
+                    continue
+
+                # worth=True — always persist enriched_md for future trend analysis
+                if not md:
+                    print("  ⚠️  worth=True but no telegram_markdown returned; treating as error")
+                    record_decision(conn, t, decision="error", reason="worth=true but no md",
+                                    model_name=model)
+                    continue
+
+                if push_to_telegram and send:
                     if push_telegram(md):
                         record_decision(conn, t, decision="worth", reason=reason,
-                                        enriched_md=md, model_name=model, sent=True)
-                        print(f"  ✓ pushed to telegram")
+                                        enriched_md=md, model_name=model,
+                                        push_decision="pushed", push_reason=push_reason,
+                                        sent=True)
+                        print("  ✓ pushed to telegram")
                     else:
-                        record_decision(conn, t, decision="worth", reason=f"{reason} [send failed]",
-                                        enriched_md=md, model_name=model, sent=False)
-                elif worth and md and not send:
+                        record_decision(conn, t, decision="worth",
+                                        reason=f"{reason} [send failed]",
+                                        enriched_md=md, model_name=model,
+                                        push_decision="pushed", push_reason=push_reason,
+                                        sent=False)
+                        print("  ✗ telegram send failed (stored anyway)")
+                elif push_to_telegram and not send:
                     record_decision(conn, t, decision="worth", reason=reason,
-                                    enriched_md=md, model_name=model, sent=False)
-                    print(f"  (--no-send) skipped telegram push")
+                                    enriched_md=md, model_name=model,
+                                    push_decision="pushed", push_reason=push_reason,
+                                    sent=False)
+                    print("  (--no-send) would have pushed, stored only")
                 else:
-                    record_decision(conn, t, decision="skip", reason=reason, model_name=model)
+                    # worth=True but discussion engagement too low → archive
+                    record_decision(conn, t, decision="worth", reason=reason,
+                                    enriched_md=md, model_name=model,
+                                    push_decision="archived", push_reason=push_reason,
+                                    sent=False)
+                    print("  📦 archived (low engagement, not pushed)")
             except Exception as e:
                 print(f"  ERROR: {e}")
                 traceback.print_exc()
