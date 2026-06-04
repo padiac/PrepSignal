@@ -80,7 +80,15 @@ def split_balanced(text: str, max_len: int = MAX_LEN) -> list[str]:
 def send_message(token: str, chat_id: str, text: str) -> None:
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = urllib.parse.urlencode(
-        {"chat_id": chat_id, "text": text, "disable_web_page_preview": "true"}
+        {
+            "chat_id": chat_id,
+            "text": text,
+            "disable_web_page_preview": "true",
+            # Use legacy Markdown (not MarkdownV2) — simpler rules, *bold*
+            # and [text](url) work without aggressive escaping. Plain-text
+            # messages without markdown chars still render correctly.
+            "parse_mode": "Markdown",
+        }
     ).encode("utf-8")
     last_err: Exception | None = None
     for attempt, delay in enumerate([0, *RETRY_DELAYS]):
